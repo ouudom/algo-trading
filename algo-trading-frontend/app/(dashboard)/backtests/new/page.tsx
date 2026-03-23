@@ -83,7 +83,7 @@ export default function NewBacktestPage() {
 
   const { data: files = [] } = useQuery({
     queryKey: ['data-files'],
-    queryFn: getDataFiles,
+    queryFn: ({ signal }) => getDataFiles(signal),
   });
 
   const selectedFile: DataFileInfo | null =

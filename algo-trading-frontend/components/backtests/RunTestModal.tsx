@@ -63,7 +63,7 @@ export default function RunTestModal({ open, onClose, onSuccess }: RunTestModalP
 
   const { data: files = [] } = useQuery({
     queryKey: ['data-files'],
-    queryFn: getDataFiles,
+    queryFn: ({ signal }) => getDataFiles(signal),
     enabled: open,
   });
 
