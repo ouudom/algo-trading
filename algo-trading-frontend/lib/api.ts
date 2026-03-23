@@ -218,18 +218,18 @@ export async function getLiveConfigs(): Promise<LiveTradingConfig[]> {
 
 export async function createLiveConfig(
   symbol: string,
-  variation: string,
-  strategy = 'MA_ATR'
+  strategy: 'EMA' | 'RSI',
+  params_json?: Record<string, unknown>
 ): Promise<LiveTradingConfig> {
   return apiFetch<LiveTradingConfig>('/live-trades/configs', {
     method: 'POST',
-    body: JSON.stringify({ symbol, variation, strategy }),
+    body: JSON.stringify({ symbol, strategy, params_json: params_json ?? null }),
   });
 }
 
 export async function updateLiveConfig(
   id: string,
-  body: { variation?: string; strategy?: string }
+  body: { params_json?: Record<string, unknown> }
 ): Promise<LiveTradingConfig> {
   return apiFetch<LiveTradingConfig>(`/live-trades/configs/${id}`, {
     method: 'PATCH',

@@ -68,14 +68,14 @@ async def notify_trade_opened(
     sl_price: float,
     tp_price: float,
     ticket: int,
-    variation: str = "V1",
+    strategy: str = "EMA",
 ) -> None:
     """Alert: new live position opened."""
     side = "LONG" if direction == 1 else "SHORT"
     emoji = "" if direction == 1 else ""
     message = (
         f"{emoji} <b>{side} {symbol} opened</b>\n"
-        f"Ticket: <code>{ticket}</code> | Variation: {variation}\n"
+        f"Ticket: <code>{ticket}</code> | Strategy: {strategy}\n"
         f"Entry: <b>{entry_price:.5f}</b>  |  Lots: {lots:.2f}\n"
         f"SL: {sl_price:.5f}  |  TP: {tp_price:.5f}"
     )

@@ -155,8 +155,7 @@ async def open_live_trade(
     ticket: int,
     account_equity_at_entry: Optional[float] = None,
     entry_time: Optional[datetime] = None,
-    strategy: str = "MA_ATR",
-    variation: str = "V1",
+    strategy: str = "EMA",
     notes: Optional[str] = None,
 ) -> UUID:
     """Persist a new live position to the database with status='open'.
@@ -195,7 +194,6 @@ async def open_live_trade(
         entry_time=entry_time or datetime.now(timezone.utc),
         status="open",
         strategy=strategy,
-        variation=variation,
         ticket=ticket,
         account_equity_at_entry=account_equity_at_entry,
         notes=notes,

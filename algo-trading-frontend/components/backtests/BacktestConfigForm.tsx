@@ -103,7 +103,7 @@ export default function BacktestConfigForm({
     rsi_period: 14, rsi_threshold: 50, trend_ema_period: 200,
     // Shared defaults
     atr_period: 14, sl_multiplier: 1.5, tp_multiplier: 3.0,
-    initial_equity: 10000,
+    initial_equity: 1000,
     start_date: '',
     end_date: '',
     be_enabled: false,

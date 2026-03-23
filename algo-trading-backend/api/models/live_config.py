@@ -1,19 +1,19 @@
 """
 live_config.py - SQLAlchemy ORM model for live trading strategy configurations.
 
-Each row represents one symbol + variation combination that can be enabled or
-disabled from the UI.  When enabled, an APScheduler cron job fires every H1
-bar close and runs the live trading logic for that config.
+Each row represents one symbol + strategy combination that can be enabled or
+disabled from the UI. Strategy parameters are stored as JSON so the user can
+configure EMA or RSI params without schema changes.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -27,8 +27,8 @@ class LiveTradingConfig(Base):
     -------
     id:                    UUID primary key.
     symbol:                Instrument, e.g. ``"XAUUSD"``.
-    variation:             Strategy variation label, e.g. ``"V1"``.
-    strategy:              Strategy name, e.g. ``"MA_ATR"``.
+    strategy:              Strategy name: ``"EMA"`` or ``"RSI"``.
+    params_json:           JSON dict of strategy parameters (overrides defaults).
     enabled:               Whether this config is currently active (job scheduled).
     status:                ``idle`` | ``running`` | ``halted_daily`` |
                            ``halted_drawdown`` | ``error``.
@@ -46,8 +46,8 @@ class LiveTradingConfig(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    variation: Mapped[str] = mapped_column(String(10), nullable=False)
-    strategy: Mapped[str] = mapped_column(String(50), nullable=False, default="MA_ATR")
+    strategy: Mapped[str] = mapped_column(String(10), nullable=False)  # "EMA" | "RSI"
+    params_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="idle")
     last_run_at: Mapped[Optional[datetime]] = mapped_column(
@@ -71,11 +71,11 @@ class LiveTradingConfig(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("symbol", "variation", name="uq_live_configs_symbol_variation"),
+        UniqueConstraint("symbol", "strategy", name="uq_live_configs_symbol_strategy"),
     )
 
     def __repr__(self) -> str:
         return (
             f"<LiveTradingConfig id={self.id} symbol={self.symbol!r} "
-            f"variation={self.variation!r} enabled={self.enabled} status={self.status!r}>"
+            f"strategy={self.strategy!r} enabled={self.enabled} status={self.status!r}>"
         )

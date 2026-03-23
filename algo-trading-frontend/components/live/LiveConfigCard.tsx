@@ -71,10 +71,15 @@ export default function LiveConfigCard({
               {config.symbol}
             </span>
             <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/20">
-              {config.variation}
+              {config.strategy}
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">{config.strategy}</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {config.strategy === 'EMA' ? 'EMA Crossover + ATR' : 'RSI Momentum'}
+            {config.params_json && Object.keys(config.params_json).length > 0 && (
+              <span className="ml-1 text-gray-600">· custom params</span>
+            )}
+          </p>
         </div>
 
         {/* Status badge */}
@@ -144,7 +149,7 @@ export default function LiveConfigCard({
 
         <button
           onClick={() => {
-            if (confirm(`Delete config for ${config.symbol} ${config.variation}?`)) {
+            if (confirm(`Delete config for ${config.symbol} ${config.strategy}?`)) {
               onDelete(config.id);
             }
           }}

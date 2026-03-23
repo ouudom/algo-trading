@@ -14,10 +14,48 @@ import {
 import type { LiveTradingConfig, LiveTrade } from '@/types';
 import LiveConfigCard from '@/components/live/LiveConfigCard';
 
-// ─── Supported symbols / variations from strategy catalogue ──────────────────
+// ─── Strategy definitions ─────────────────────────────────────────────────────
 
 const SYMBOLS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD'];
-const VARIATIONS = ['V1', 'V2', 'V3', 'V4', 'V5'];
+
+type StrategyId = 'EMA' | 'RSI';
+
+interface ParamDef {
+  key: string;
+  label: string;
+  type: 'int' | 'float' | 'bool';
+  default: number | boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+const STRATEGY_PARAMS: Record<StrategyId, ParamDef[]> = {
+  EMA: [
+    { key: 'fast_period',     label: 'Fast EMA Period',     type: 'int',   default: 10,   min: 2,  max: 50,  step: 1 },
+    { key: 'slow_period',     label: 'Slow EMA Period',     type: 'int',   default: 50,   min: 5,  max: 200, step: 1 },
+    { key: 'atr_period',      label: 'ATR Period',          type: 'int',   default: 14,   min: 5,  max: 50,  step: 1 },
+    { key: 'atr_multiplier',  label: 'ATR Multiplier',      type: 'float', default: 1.0,  min: 0.1, max: 5.0, step: 0.1 },
+    { key: 'sl_atr_mult',     label: 'SL ATR Mult',         type: 'float', default: 1.5,  min: 0.5, max: 5.0, step: 0.1 },
+    { key: 'tp_atr_mult',     label: 'TP ATR Mult',         type: 'float', default: 3.0,  min: 0.5, max: 10.0, step: 0.1 },
+    { key: 'use_sma200_filter', label: 'SMA(200) Filter',   type: 'bool',  default: true },
+    { key: 'sma200_period',   label: 'SMA Period',          type: 'int',   default: 200,  min: 50, max: 500, step: 10 },
+  ],
+  RSI: [
+    { key: 'rsi_period',      label: 'RSI Period',          type: 'int',   default: 14,   min: 2,  max: 50,  step: 1 },
+    { key: 'rsi_threshold',   label: 'RSI Threshold',       type: 'float', default: 50.0, min: 10, max: 90,  step: 1 },
+    { key: 'trend_ema_period', label: 'Trend EMA Period',   type: 'int',   default: 200,  min: 20, max: 500, step: 10 },
+    { key: 'atr_period',      label: 'ATR Period',          type: 'int',   default: 14,   min: 5,  max: 50,  step: 1 },
+    { key: 'sl_atr_mult',     label: 'SL ATR Mult',         type: 'float', default: 1.5,  min: 0.5, max: 5.0, step: 0.1 },
+    { key: 'tp_atr_mult',     label: 'TP ATR Mult',         type: 'float', default: 3.0,  min: 0.5, max: 10.0, step: 0.1 },
+  ],
+};
+
+function defaultParams(strategy: StrategyId): Record<string, number | boolean> {
+  return Object.fromEntries(
+    STRATEGY_PARAMS[strategy].map((p) => [p.key, p.default])
+  );
+}
 
 // ─── Add Config Modal ─────────────────────────────────────────────────────────
 
@@ -26,17 +64,30 @@ function AddConfigModal({
   onAdd,
 }: {
   onClose: () => void;
-  onAdd: (symbol: string, variation: string) => void;
+  onAdd: (symbol: string, strategy: StrategyId, params: Record<string, unknown>) => void;
 }) {
   const [symbol, setSymbol] = useState(SYMBOLS[0]);
-  const [variation, setVariation] = useState(VARIATIONS[0]);
+  const [strategy, setStrategy] = useState<StrategyId>('EMA');
+  const [params, setParams] = useState<Record<string, number | boolean>>(defaultParams('EMA'));
+
+  const handleStrategyChange = (s: StrategyId) => {
+    setStrategy(s);
+    setParams(defaultParams(s));
+  };
+
+  const handleParamChange = (key: string, value: number | boolean) => {
+    setParams((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const paramDefs = STRATEGY_PARAMS[strategy];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm shadow-2xl">
-        <h2 className="text-gray-100 font-semibold text-lg mb-4">Add Strategy</h2>
+      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <h2 className="text-gray-100 font-semibold text-lg mb-4">Add Strategy Config</h2>
 
         <div className="space-y-4">
+          {/* Symbol */}
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">Symbol</label>
             <select
@@ -50,17 +101,67 @@ function AddConfigModal({
             </select>
           </div>
 
+          {/* Strategy */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Variation</label>
-            <select
-              value={variation}
-              onChange={(e) => setVariation(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {VARIATIONS.map((v) => (
-                <option key={v} value={v}>{v}</option>
+            <label className="block text-xs text-gray-400 mb-1.5">Strategy</label>
+            <div className="flex gap-2">
+              {(['EMA', 'RSI'] as StrategyId[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => handleStrategyChange(s)}
+                  className={cn(
+                    'flex-1 py-2 rounded-md text-sm font-medium border transition-colors',
+                    strategy === s
+                      ? 'bg-blue-600 text-white border-blue-500'
+                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'
+                  )}
+                >
+                  {s === 'EMA' ? 'EMA Crossover + ATR' : 'RSI Momentum'}
+                </button>
               ))}
-            </select>
+            </div>
+          </div>
+
+          {/* Strategy params */}
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Parameters</p>
+            <div className="space-y-2">
+              {paramDefs.map((p) => (
+                <div key={p.key} className="flex items-center justify-between gap-3">
+                  <label className="text-xs text-gray-400 shrink-0 w-36">{p.label}</label>
+                  {p.type === 'bool' ? (
+                    <button
+                      onClick={() => handleParamChange(p.key, !params[p.key])}
+                      className={cn(
+                        'text-xs font-medium px-3 py-1 rounded border transition-colors',
+                        params[p.key]
+                          ? 'bg-green-700/30 text-green-400 border-green-600/40'
+                          : 'bg-gray-800 text-gray-500 border-gray-700'
+                      )}
+                    >
+                      {params[p.key] ? 'On' : 'Off'}
+                    </button>
+                  ) : (
+                    <input
+                      type="number"
+                      value={params[p.key] as number}
+                      min={p.min}
+                      max={p.max}
+                      step={p.step ?? 1}
+                      onChange={(e) =>
+                        handleParamChange(
+                          p.key,
+                          p.type === 'int'
+                            ? parseInt(e.target.value, 10)
+                            : parseFloat(e.target.value)
+                        )
+                      }
+                      className="w-24 bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -73,7 +174,7 @@ function AddConfigModal({
           </button>
           <button
             onClick={() => {
-              onAdd(symbol, variation);
+              onAdd(symbol, strategy, params);
               onClose();
             }}
             className="flex-1 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
@@ -107,9 +208,11 @@ function TradesDrawer({
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
           <div>
             <h2 className="text-gray-100 font-semibold">
-              {config.symbol} {config.variation} — Trades
+              {config.symbol} {config.strategy} — Trades
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">{config.strategy}</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {config.strategy === 'EMA' ? 'EMA Crossover + ATR' : 'RSI Momentum'}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -234,8 +337,15 @@ export default function LiveTradingPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: ({ symbol, variation }: { symbol: string; variation: string }) =>
-      createLiveConfig(symbol, variation),
+    mutationFn: ({
+      symbol,
+      strategy,
+      params,
+    }: {
+      symbol: string;
+      strategy: StrategyId;
+      params: Record<string, unknown>;
+    }) => createLiveConfig(symbol, strategy, params),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['liveConfigs'] }),
     onError: (err: Error) => alert(`Failed to create: ${err.message}`),
   });
@@ -332,7 +442,9 @@ export default function LiveTradingPage() {
       {showAddModal && (
         <AddConfigModal
           onClose={() => setShowAddModal(false)}
-          onAdd={(symbol, variation) => createMutation.mutate({ symbol, variation })}
+          onAdd={(symbol, strategy, params) =>
+            createMutation.mutate({ symbol, strategy, params })
+          }
         />
       )}
 

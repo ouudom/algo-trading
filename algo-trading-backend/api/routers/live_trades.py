@@ -6,7 +6,7 @@ Endpoints
 Config management:
     GET    /live-trades/configs              List all configs
     POST   /live-trades/configs              Create a config
-    PATCH  /live-trades/configs/{id}         Update variation / strategy
+    PATCH  /live-trades/configs/{id}         Update params
     DELETE /live-trades/configs/{id}         Delete a config
 
 Enable / disable (controls APScheduler job):
@@ -35,6 +35,7 @@ from api.db import AsyncSessionLocal
 from api.deps import DBSession
 from api.models.live_config import LiveTradingConfig
 from api.models.live_trade import LiveTrade
+from api.routers.strategies import STRATEGY_DEFAULTS
 from api.scheduler import scheduler
 from api.schemas.live_trade import (
     LiveConfigCreate,
@@ -56,11 +57,57 @@ _peak_equity: dict[str, float] = {}
 
 
 # ---------------------------------------------------------------------------
+# Signal dispatch helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_params(strategy: str, params_json: dict | None) -> dict:
+    """Merge user overrides with strategy defaults.
+
+    Returns a plain dict with all required params for the strategy.
+    """
+    defaults = STRATEGY_DEFAULTS.get(strategy, {})
+    if params_json:
+        return {**defaults, **params_json}
+    return dict(defaults)
+
+
+def _generate_signals_for_strategy(df, strategy: str, params: dict):
+    """Call the appropriate signal function for the given strategy."""
+    if strategy == "EMA":
+        from src.algo_trading.signal.signal import SignalParams, generate_signals
+        signal_params = SignalParams(
+            fast_period=int(params.get("fast_period", 10)),
+            slow_period=int(params.get("slow_period", 50)),
+            atr_period=int(params.get("atr_period", 14)),
+            atr_multiplier=float(params.get("atr_multiplier", 1.0)),
+            sl_atr_mult=float(params.get("sl_atr_mult", 1.5)),
+            tp_atr_mult=float(params.get("tp_atr_mult", 3.0)),
+            use_sma200_filter=bool(params.get("use_sma200_filter", True)),
+            sma200_period=int(params.get("sma200_period", 200)),
+        )
+        return generate_signals(df, signal_params)
+    elif strategy == "RSI":
+        from src.algo_trading.signal.signal import RsiSignalParams, generate_rsi_signals
+        signal_params = RsiSignalParams(
+            rsi_period=int(params.get("rsi_period", 14)),
+            rsi_threshold=float(params.get("rsi_threshold", 50.0)),
+            trend_ema_period=int(params.get("trend_ema_period", 200)),
+            atr_period=int(params.get("atr_period", 14)),
+            sl_atr_mult=float(params.get("sl_atr_mult", 1.5)),
+            tp_atr_mult=float(params.get("tp_atr_mult", 3.0)),
+        )
+        return generate_rsi_signals(df, signal_params)
+    else:
+        raise ValueError(f"Unknown strategy: {strategy!r}")
+
+
+# ---------------------------------------------------------------------------
 # Live bar handler — called by APScheduler every H1 bar close (minute=2)
 # ---------------------------------------------------------------------------
 
 
-async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None:
+async def _run_live_bar(config_id_str: str, symbol: str, strategy: str) -> None:
     """Execute one H1 bar of live trading logic for the given config.
 
     Order of operations:
@@ -92,7 +139,6 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
         check_drawdown_circuit,
         position_size,
     )
-    from src.algo_trading.signal.signal import VARIATION_PARAMS, generate_signals
 
     settings = get_settings()
     config_id = uuid.UUID(config_id_str)
@@ -144,14 +190,14 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
             # 4. Drawdown circuit breaker
             if check_drawdown_circuit(peak, current_equity, settings.MAX_DRAWDOWN_PCT):
                 logger.critical(
-                    "DRAWDOWN CIRCUIT BREAKER for %s %s — halting.", symbol, variation
+                    "DRAWDOWN CIRCUIT BREAKER for %s %s — halting.", symbol, strategy
                 )
                 config.status = "halted_drawdown"
                 config.enabled = False
                 await session.commit()
                 _remove_scheduler_job(config_id_str)
                 await notify_circuit_breaker(
-                    reason=f"10% drawdown reached ({symbol} {variation})",
+                    reason=f"10% drawdown reached ({symbol} {strategy})",
                     equity=current_equity,
                     symbol=symbol,
                 )
@@ -160,12 +206,12 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
             # 5. Daily loss circuit breaker
             if check_daily_limit(session_start, current_equity, settings.MAX_DAILY_LOSS_PCT):
                 logger.warning(
-                    "DAILY LOSS LIMIT for %s %s — skipping bar.", symbol, variation
+                    "DAILY LOSS LIMIT for %s %s — skipping bar.", symbol, strategy
                 )
                 config.status = "halted_daily"
                 await session.commit()
                 await notify_circuit_breaker(
-                    reason=f"3% daily loss limit reached ({symbol} {variation})",
+                    reason=f"3% daily loss limit reached ({symbol} {strategy})",
                     equity=current_equity,
                     symbol=symbol,
                 )
@@ -179,11 +225,8 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
                 tf = 16385  # mt5linux numeric constant for TIMEFRAME_H1
 
             df = fetch_ohlcv(symbol, tf, count=200)
-            params = VARIATION_PARAMS.get(variation)
-            if params is None:
-                raise ValueError(f"Unknown variation: {variation!r}")
-
-            df = generate_signals(df, params)
+            params = _resolve_params(config.strategy, config.params_json)
+            df = _generate_signals_for_strategy(df, config.strategy, params)
             last = df.iloc[-1]
             signal = int(last["signal"])
 
@@ -228,7 +271,7 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
                 lots,
                 sl_price,
                 tp_price,
-                comment=f"AlgoTrader-{variation}",
+                comment=f"AlgoTrader-{strategy}",
             )
 
             trade_id = await open_live_trade(
@@ -241,8 +284,7 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
                 tp_price=tp_price,
                 ticket=result.ticket,
                 account_equity_at_entry=current_equity,
-                strategy=params.get("strategy", "MA_ATR"),
-                variation=variation,
+                strategy=config.strategy,
             )
             config.status = "running"
             config.last_error = None
@@ -265,11 +307,10 @@ async def _run_live_bar(config_id_str: str, symbol: str, variation: str) -> None
                 sl_price=sl_price,
                 tp_price=tp_price,
                 ticket=result.ticket,
-                variation=variation,
             )
 
         except Exception as exc:
-            logger.exception("Error in live bar for %s %s: %s", symbol, variation, exc)
+            logger.exception("Error in live bar for %s %s: %s", symbol, strategy, exc)
             config.status = "error"
             config.last_error = str(exc)[:500]
             await session.commit()
@@ -345,16 +386,16 @@ async def _sync_closed_positions(
                 logger.warning("Failed to sync closed position ticket=%d: %s", trade.ticket, exc)
 
 
-def _add_scheduler_job(config_id_str: str, symbol: str, variation: str) -> None:
+def _add_scheduler_job(config_id_str: str, symbol: str, strategy: str) -> None:
     scheduler.add_job(
         _run_live_bar,
         trigger=CronTrigger(minute=2),
         id=config_id_str,
-        args=[config_id_str, symbol, variation],
+        args=[config_id_str, symbol, strategy],
         replace_existing=True,
         misfire_grace_time=300,
     )
-    logger.info("Scheduled live job for %s %s (id=%s)", symbol, variation, config_id_str)
+    logger.info("Scheduled live job for %s %s (id=%s)", symbol, strategy, config_id_str)
 
 
 def _remove_scheduler_job(config_id_str: str) -> None:
@@ -385,23 +426,23 @@ async def list_configs(db: DBSession) -> list[LiveTradingConfig]:
     summary="Create a live trading config",
 )
 async def create_config(body: LiveConfigCreate, db: DBSession) -> LiveTradingConfig:
-    # Check uniqueness
+    # Check uniqueness (one EMA and one RSI per symbol)
     existing = await db.execute(
         select(LiveTradingConfig).where(
             LiveTradingConfig.symbol == body.symbol,
-            LiveTradingConfig.variation == body.variation,
+            LiveTradingConfig.strategy == body.strategy,
         )
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Config for {body.symbol} {body.variation} already exists.",
+            detail=f"Config for {body.symbol} {body.strategy} already exists.",
         )
 
     config = LiveTradingConfig(
         symbol=body.symbol,
-        variation=body.variation,
         strategy=body.strategy,
+        params_json=body.params_json,
         enabled=False,
         status="idle",
     )
@@ -410,7 +451,7 @@ async def create_config(body: LiveConfigCreate, db: DBSession) -> LiveTradingCon
     return config
 
 
-@router.patch("/configs/{config_id}", response_model=LiveConfigRead, summary="Update a config")
+@router.patch("/configs/{config_id}", response_model=LiveConfigRead, summary="Update config params")
 async def update_config(
     config_id: uuid.UUID, body: LiveConfigUpdate, db: DBSession
 ) -> LiveTradingConfig:
@@ -421,10 +462,8 @@ async def update_config(
         raise HTTPException(
             status_code=400, detail="Disable the config before modifying it."
         )
-    if body.variation is not None:
-        config.variation = body.variation
-    if body.strategy is not None:
-        config.strategy = body.strategy
+    if body.params_json is not None:
+        config.params_json = body.params_json
     await db.flush()
     return config
 
@@ -465,7 +504,7 @@ async def enable_config(config_id: uuid.UUID, db: DBSession) -> LiveTradingConfi
     config.last_error = None
     await db.flush()
 
-    _add_scheduler_job(str(config_id), config.symbol, config.variation)
+    _add_scheduler_job(str(config_id), config.symbol, config.strategy)
     return config
 
 

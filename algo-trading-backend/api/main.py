@@ -67,9 +67,9 @@ async def _restore_live_jobs() -> None:
             )
             configs = result.scalars().all()
             for config in configs:
-                _add_scheduler_job(str(config.id), config.symbol, config.variation)
+                _add_scheduler_job(str(config.id), config.symbol, config.strategy)
                 logger.info(
-                    "Restored live job for %s %s on startup.", config.symbol, config.variation
+                    "Restored live job for %s %s on startup.", config.symbol, config.strategy
                 )
     except Exception as exc:
         logger.warning("Could not restore live jobs on startup: %s", exc)

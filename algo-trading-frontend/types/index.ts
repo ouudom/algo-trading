@@ -194,7 +194,6 @@ export interface LiveTrade {
   pnl: number | null;
   status: LiveTradeStatus;
   strategy: string;
-  variation: string;
   ticket: number;
   account_equity_at_entry: number | null;
   notes: string | null;
@@ -224,8 +223,8 @@ export type LiveConfigStatus =
 export interface LiveTradingConfig {
   id: string;
   symbol: string;
-  variation: string;
-  strategy: string;
+  strategy: 'EMA' | 'RSI';
+  params_json: Record<string, unknown> | null;
   enabled: boolean;
   status: LiveConfigStatus;
   last_run_at: string | null;

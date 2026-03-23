@@ -38,8 +38,7 @@ class LiveTrade(Base):
     exit_reason:             ``SL`` | ``TP`` | ``manual`` | ``circuit_break``.
     pnl:                     Realised P&L in account currency.
     status:                  ``open`` | ``closed`` | ``error``.
-    strategy:                Strategy label, e.g. ``"MA_ATR"``.
-    variation:               Hyper-parameter variation, e.g. ``"V1"``.
+    strategy:                Strategy name: ``"EMA"`` or ``"RSI"``.
     ticket:                  MT5 ticket number — unique and NOT NULL.
     account_equity_at_entry: Account equity snapshot at entry (risk audit).
     notes:                   Optional free-text annotation.
@@ -67,8 +66,7 @@ class LiveTrade(Base):
     exit_reason: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     pnl: Mapped[Optional[float]] = mapped_column(Numeric(14, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
-    strategy: Mapped[str] = mapped_column(String(50), nullable=False, default="MA_ATR")
-    variation: Mapped[str] = mapped_column(String(10), nullable=False, default="V1")
+    strategy: Mapped[str] = mapped_column(String(10), nullable=False, default="EMA")
     ticket: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     account_equity_at_entry: Mapped[Optional[float]] = mapped_column(
         Numeric(14, 2), nullable=True

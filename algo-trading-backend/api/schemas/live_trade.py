@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,7 +35,6 @@ class LiveTradeRead(BaseModel):
     pnl: Optional[float] = None
     status: str
     strategy: str
-    variation: str
     ticket: int
     account_equity_at_entry: Optional[float] = None
     notes: Optional[str] = None
@@ -64,15 +63,14 @@ class LiveConfigCreate(BaseModel):
     """Request body for POST /live-trades/configs."""
 
     symbol: str = Field(..., min_length=2, max_length=20)
-    variation: str = Field(..., pattern=r"^V[1-9][0-9]?$")
-    strategy: str = Field(default="MA_ATR", max_length=50)
+    strategy: str = Field(..., pattern=r"^(EMA|RSI)$")
+    params_json: Optional[dict[str, Any]] = Field(default=None)
 
 
 class LiveConfigUpdate(BaseModel):
     """Request body for PATCH /live-trades/configs/{id}."""
 
-    variation: Optional[str] = Field(default=None, pattern=r"^V[1-9][0-9]?$")
-    strategy: Optional[str] = Field(default=None, max_length=50)
+    params_json: Optional[dict[str, Any]] = Field(default=None)
 
 
 class LiveConfigRead(BaseModel):
@@ -82,8 +80,8 @@ class LiveConfigRead(BaseModel):
 
     id: uuid.UUID
     symbol: str
-    variation: str
     strategy: str
+    params_json: Optional[dict[str, Any]] = None
     enabled: bool
     status: str
     last_run_at: Optional[datetime] = None

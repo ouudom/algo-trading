@@ -7,9 +7,9 @@ Supports two operating modes:
 
 Usage examples::
 
-    python main.py --mode backtest --symbol XAUUSD --variation V1
-    python main.py --mode backtest --symbol EURUSD --variation V3 --bars 10000
-    python main.py --mode paper --symbol XAUUSD --variation V1
+    python main.py --mode backtest --symbol XAUUSD --strategy ema
+    python main.py --mode backtest --symbol EURUSD --strategy rsi --bars 10000
+    python main.py --mode paper --symbol XAUUSD --strategy ema
 """
 
 from __future__ import annotations
@@ -35,28 +35,27 @@ logger = logging.getLogger("algo_trader.cli")
 settings = get_settings()
 
 # ---------------------------------------------------------------------------
-# Variation catalogue — mirrors api/routers/strategies.py
-# ---------------------------------------------------------------------------
-from algo_trading.signal.signal import SignalParams
-
-VARIATION_PARAMS: dict[str, SignalParams] = {
-    "V1": SignalParams(fast_period=10, slow_period=50,  atr_period=14, atr_multiplier=1.0, sl_atr_mult=1.5, tp_atr_mult=3.0, sma200_period=200, use_sma200_filter=True),
-    "V2": SignalParams(fast_period=8,  slow_period=30,  atr_period=14, atr_multiplier=0.8, sl_atr_mult=1.2, tp_atr_mult=2.5, sma200_period=200, use_sma200_filter=True),
-    "V3": SignalParams(fast_period=5,  slow_period=20,  atr_period=10, atr_multiplier=0.5, sl_atr_mult=1.0, tp_atr_mult=2.0, sma200_period=200, use_sma200_filter=True),
-    "V4": SignalParams(fast_period=20, slow_period=100, atr_period=20, atr_multiplier=1.2, sl_atr_mult=2.0, tp_atr_mult=4.0, sma200_period=200, use_sma200_filter=True),
-    "V5": SignalParams(fast_period=3,  slow_period=15,  atr_period=7,  atr_multiplier=0.3, sl_atr_mult=0.8, tp_atr_mult=1.6, sma200_period=200, use_sma200_filter=False),
-}
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
+# EMA default params
+_EMA_DEFAULTS = dict(
+    fast_period=10, slow_period=50, atr_period=14,
+    atr_multiplier=1.0, sl_atr_mult=1.5, tp_atr_mult=3.0,
+    use_sma200_filter=True, sma200_period=200,
+)
+
+# RSI default params
+_RSI_DEFAULTS = dict(
+    rsi_period=14, rsi_threshold=50.0, trend_ema_period=200,
+    atr_period=14, sl_atr_mult=1.5, tp_atr_mult=3.0,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="algo_trader",
-        description="AlgoTrader CLI — MA Crossover + ATR strategy runner.",
+        description="AlgoTrader CLI — EMA Crossover or RSI Momentum strategy runner.",
     )
     parser.add_argument(
         "--mode",
@@ -70,10 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Instrument symbol (default: XAUUSD).",
     )
     parser.add_argument(
-        "--variation",
-        choices=list(VARIATION_PARAMS),
-        default="V1",
-        help="Strategy variation V1–V5 (default: V1).",
+        "--strategy",
+        choices=["ema", "rsi"],
+        default="ema",
+        help="Strategy to run: ema (EMA Crossover + ATR) or rsi (RSI Momentum). Default: ema.",
     )
     parser.add_argument(
         "--bars",
@@ -103,12 +102,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="initial_equity",
         help="Starting equity for backtest (default: 10000).",
     )
+    # EMA-specific overrides
+    parser.add_argument("--fast-period",   type=int,   default=None, dest="fast_period")
+    parser.add_argument("--slow-period",   type=int,   default=None, dest="slow_period")
+    parser.add_argument("--atr-period",    type=int,   default=None, dest="atr_period")
+    parser.add_argument("--atr-mult",      type=float, default=None, dest="atr_multiplier")
+    parser.add_argument("--sl-mult",       type=float, default=None, dest="sl_atr_mult")
+    parser.add_argument("--tp-mult",       type=float, default=None, dest="tp_atr_mult")
+    parser.add_argument("--no-sma200",     action="store_true", dest="no_sma200",
+                        help="Disable SMA(200) trend filter (EMA strategy only).")
+    # RSI-specific overrides
+    parser.add_argument("--rsi-period",     type=int,   default=None, dest="rsi_period")
+    parser.add_argument("--rsi-threshold",  type=float, default=None, dest="rsi_threshold")
+    parser.add_argument("--trend-ema",      type=int,   default=None, dest="trend_ema_period")
     return parser
 
 
 # ---------------------------------------------------------------------------
 # Mode handlers
 # ---------------------------------------------------------------------------
+
+
+def _build_signal_params(args: argparse.Namespace):
+    """Construct typed signal params from CLI args, applying defaults."""
+    strategy = args.strategy.upper()  # "ema" → "EMA"
+    if strategy == "EMA":
+        from algo_trading.signal.signal import SignalParams
+        p = dict(_EMA_DEFAULTS)
+        if args.fast_period is not None:   p["fast_period"] = args.fast_period
+        if args.slow_period is not None:   p["slow_period"] = args.slow_period
+        if args.atr_period is not None:    p["atr_period"] = args.atr_period
+        if args.atr_multiplier is not None: p["atr_multiplier"] = args.atr_multiplier
+        if args.sl_atr_mult is not None:   p["sl_atr_mult"] = args.sl_atr_mult
+        if args.tp_atr_mult is not None:   p["tp_atr_mult"] = args.tp_atr_mult
+        if args.no_sma200:                 p["use_sma200_filter"] = False
+        return SignalParams(**p), strategy
+    else:
+        from algo_trading.signal.signal import RsiSignalParams
+        p = dict(_RSI_DEFAULTS)
+        if args.rsi_period is not None:      p["rsi_period"] = args.rsi_period
+        if args.rsi_threshold is not None:   p["rsi_threshold"] = args.rsi_threshold
+        if args.trend_ema_period is not None: p["trend_ema_period"] = args.trend_ema_period
+        if args.atr_period is not None:      p["atr_period"] = args.atr_period
+        if args.sl_atr_mult is not None:     p["sl_atr_mult"] = args.sl_atr_mult
+        if args.tp_atr_mult is not None:     p["tp_atr_mult"] = args.tp_atr_mult
+        return RsiSignalParams(**p), strategy
 
 
 def run_backtest_mode(args: argparse.Namespace) -> None:
@@ -119,10 +157,12 @@ def run_backtest_mode(args: argparse.Namespace) -> None:
     from algo_trading.backtest.backtest import BacktestParams
     from algo_trading.analytics import compute_metrics
 
+    signal_params, strategy_label = _build_signal_params(args)
+
     logger.info(
-        "Backtest mode: symbol=%s variation=%s timeframe=%s csv=%s",
+        "Backtest mode: symbol=%s strategy=%s timeframe=%s csv=%s",
         args.symbol,
-        args.variation,
+        strategy_label,
         args.timeframe,
         args.csv or "(parquet)",
     )
@@ -177,9 +217,9 @@ def run_backtest_mode(args: argparse.Namespace) -> None:
         pip_value, pip_factor = 10.0, 10_000
 
     params = BacktestParams(
-        signal_params=VARIATION_PARAMS[args.variation],
+        signal_params=signal_params,
         initial_equity=args.initial_equity,
-        variation=args.variation,
+        variation=strategy_label,
         pip_value=pip_value,
         pip_factor=pip_factor,
         timeframe=args.timeframe,
@@ -193,10 +233,12 @@ def run_backtest_mode(args: argparse.Namespace) -> None:
 
 def run_paper_mode(args: argparse.Namespace) -> None:
     """Connect to MT5 in demo mode and stream live signals without placing real orders."""
+    signal_params, strategy_label = _build_signal_params(args)
+
     logger.info(
-        "Paper trading mode: symbol=%s variation=%s",
+        "Paper trading mode: symbol=%s strategy=%s",
         args.symbol,
-        args.variation,
+        strategy_label,
     )
 
     try:
@@ -215,17 +257,23 @@ def run_paper_mode(args: argparse.Namespace) -> None:
 
     logger.info("MT5 connected. Entering live signal loop. Press Ctrl+C to stop.")
 
-    from algo_trading.signal import generate_signals
     from algo_trading.data_feed import fetch_ohlcv
     import time
 
     _TF_MAP = {"H1": mt5.TIMEFRAME_H1, "M15": mt5.TIMEFRAME_M15}
     tf = _TF_MAP.get(args.timeframe, mt5.TIMEFRAME_H1)
 
+    if strategy_label == "EMA":
+        from algo_trading.signal import generate_signals
+        _gen = lambda df: generate_signals(df, signal_params)
+    else:
+        from algo_trading.signal.signal import generate_rsi_signals
+        _gen = lambda df: generate_rsi_signals(df, signal_params)
+
     try:
         while True:
             df = fetch_ohlcv(args.symbol, tf, bars=200)
-            sig_df = generate_signals(df, VARIATION_PARAMS[args.variation])
+            sig_df = _gen(df)
             last = sig_df.iloc[-1]
             sig = int(last["signal"])
             if sig != 0:
@@ -252,7 +300,7 @@ def run_paper_mode(args: argparse.Namespace) -> None:
 def _print_results(args: argparse.Namespace, metrics: dict) -> None:
     """Pretty-print backtest metrics to stdout."""
     print("\n" + "=" * 60)
-    print(f"  Backtest Results — {args.symbol} {args.variation}")
+    print(f"  Backtest Results — {args.symbol} ({args.strategy.upper()})")
     print("=" * 60)
     for key, value in metrics.items():
         label = key.replace("_", " ").title()
