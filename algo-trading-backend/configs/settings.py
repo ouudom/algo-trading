@@ -95,7 +95,7 @@ class Settings(BaseSettings):
         description="Instruments available for trading / backtesting.",
     )
     SUPPORTED_TIMEFRAMES: list[str] = Field(
-        default=["H1"],
+        default=["H1", "H2", "M45"],
         description="Bar timeframes supported by the strategy.",
     )
 

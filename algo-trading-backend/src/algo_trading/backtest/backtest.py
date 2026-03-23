@@ -310,7 +310,7 @@ def run_backtest(
     # Sharpe (annualised, scaled by actual timeframe)
     _BARS_PER_YEAR = {
         "M1": 525_600, "M5": 105_120, "M15": 35_040, "M30": 17_520,
-        "H1": 8_760, "H2": 4_380, "H4": 2_190, "D1": 252, "W1": 52,
+        "M45": 11_680, "H1": 8_760, "H2": 4_380, "H4": 2_190, "D1": 252, "W1": 52,
     }
     if len(trades_df) > 1:
         ret_series = eq_series.pct_change().dropna()
