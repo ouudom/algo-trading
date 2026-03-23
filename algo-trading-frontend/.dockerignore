@@ -1,0 +1,32 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Next.js build output (rebuilt inside Docker)
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Secrets
+.env
+.env.*
+.env.local
+.env.production.local
+
+# Tests and docs
+*.test.*
+*.spec.*
+__tests__/
+docs/
+*.md
+
+# OS
+.DS_Store
+Thumbs.db

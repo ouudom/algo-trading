@@ -1,0 +1,70 @@
+# =============================================================================
+# AlgoTrader — Docker Compose (production)
+# Services: backend (FastAPI) + frontend (Next.js)
+# PostgreSQL is external — set DATABASE_URL in .env
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Backend — FastAPI + uvicorn
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./algo-trading-backend
+      dockerfile: Dockerfile
+    image: algotrader-backend:latest
+    container_name: algotrader-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist Parquet data files between container restarts
+      - ./algo-trading-backend/data:/app/data
+    networks:
+      - algotrader-net
+    ports:
+      # Bind to localhost only — Nginx proxies from outside
+      - "127.0.0.1:8000:8000"
+    # Allow container to reach the MT5/Wine socket running on the host
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Frontend — Next.js standalone
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./algo-trading-frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the client bundle at build time — must be the public URL
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    image: algotrader-frontend:latest
+    container_name: algotrader-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - algotrader-net
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+networks:
+  algotrader-net:
+    driver: bridge

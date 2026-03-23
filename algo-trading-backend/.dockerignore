@@ -1,0 +1,52 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test and dev artifacts
+tests/
+notebooks/
+*.ipynb
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Data files — mounted as a Docker volume instead
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Secrets — must NOT be baked into the image
+.env
+.env.*
+
+# Docs
+docs/
+*.md
+
+# Dev requirements only
+requirements-dev.txt

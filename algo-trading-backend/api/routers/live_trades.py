@@ -107,12 +107,79 @@ def _generate_signals_for_strategy(df, strategy: str, params: dict):
 # ---------------------------------------------------------------------------
 
 
+async def _apply_break_even(session, symbol: str, mt5, params: dict) -> None:
+    """Move SL to entry for any open position that has reached the BE trigger price."""
+    from src.algo_trading.journal.journal import get_open_positions
+
+    be_trigger_pct = float(params.get("be_trigger_pct", 0.0))
+    if be_trigger_pct <= 0:
+        return
+
+    open_positions = await get_open_positions(session, symbol=symbol)
+    if not open_positions:
+        return
+
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        logger.warning("BE check: could not get tick for %s", symbol)
+        return
+
+    for trade in open_positions:
+        entry = float(trade.entry_price)
+        sl = float(trade.sl_price)
+        tp = float(trade.tp_price)
+        direction = trade.direction
+
+        # Skip if BE already activated (SL already at entry)
+        if abs(sl - entry) < 1e-6:
+            continue
+
+        # Compute trigger price and check current bid/ask
+        if direction == 1:  # long
+            be_trigger = entry + be_trigger_pct * (tp - entry)
+            triggered = tick.bid >= be_trigger
+        else:  # short
+            be_trigger = entry - be_trigger_pct * (entry - tp)
+            triggered = tick.ask <= be_trigger
+
+        if not triggered:
+            continue
+
+        # Modify SL to entry on MT5 (TRADE_ACTION_SLTP)
+        mt5_positions = mt5.positions_get(ticket=trade.ticket)
+        if not mt5_positions:
+            continue
+        pos = mt5_positions[0]
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": symbol,
+            "position": trade.ticket,
+            "sl": entry,
+            "tp": pos.tp,
+        }
+        result = mt5.order_send(request)
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            trade.sl_price = entry
+            logger.info(
+                "Break-even activated: ticket=%d SL moved to entry=%.5f",
+                trade.ticket, entry,
+            )
+        else:
+            retcode = result.retcode if result else "N/A"
+            logger.warning(
+                "BE SL modification failed: ticket=%d retcode=%s",
+                trade.ticket, retcode,
+            )
+
+
 async def _run_live_bar(config_id_str: str, symbol: str, strategy: str) -> None:
     """Execute one H1 bar of live trading logic for the given config.
 
     Order of operations:
     1. Verify MT5 connection.
     2. Sync closed positions (MT5 → DB reconciliation).
+    2.5. Apply break-even to open positions that hit the trigger.
     3. Read account equity; update peak.
     4. Check drawdown circuit breaker.
     5. Check daily loss circuit breaker.
@@ -167,6 +234,12 @@ async def _run_live_bar(config_id_str: str, symbol: str, strategy: str) -> None:
             await _sync_closed_positions(
                 session, symbol, mt5, notify_trade_closed
             )
+
+            # Resolve params early — needed for break-even check below
+            params = _resolve_params(config.strategy, config.params_json)
+
+            # 2.5. Apply break-even to open positions that hit the trigger
+            await _apply_break_even(session, symbol, mt5, params)
 
             # 3. Account equity
             account = mt5.account_info()
@@ -225,7 +298,6 @@ async def _run_live_bar(config_id_str: str, symbol: str, strategy: str) -> None:
                 tf = 16385  # mt5linux numeric constant for TIMEFRAME_H1
 
             df = fetch_ohlcv(symbol, tf, count=200)
-            params = _resolve_params(config.strategy, config.params_json)
             df = _generate_signals_for_strategy(df, config.strategy, params)
             last = df.iloc[-1]
             signal = int(last["signal"])

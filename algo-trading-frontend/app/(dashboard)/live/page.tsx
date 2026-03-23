@@ -40,6 +40,7 @@ const STRATEGY_PARAMS: Record<StrategyId, ParamDef[]> = {
     { key: 'tp_atr_mult',     label: 'TP ATR Mult',         type: 'float', default: 3.0,  min: 0.5, max: 10.0, step: 0.1 },
     { key: 'use_sma200_filter', label: 'SMA(200) Filter',   type: 'bool',  default: true },
     { key: 'sma200_period',   label: 'SMA Period',          type: 'int',   default: 200,  min: 50, max: 500, step: 10 },
+    { key: 'be_trigger_pct',  label: 'BE Trigger (0=off)',  type: 'float', default: 0.0,  min: 0.0, max: 0.99, step: 0.05 },
   ],
   RSI: [
     { key: 'rsi_period',      label: 'RSI Period',          type: 'int',   default: 14,   min: 2,  max: 50,  step: 1 },
@@ -48,6 +49,7 @@ const STRATEGY_PARAMS: Record<StrategyId, ParamDef[]> = {
     { key: 'atr_period',      label: 'ATR Period',          type: 'int',   default: 14,   min: 5,  max: 50,  step: 1 },
     { key: 'sl_atr_mult',     label: 'SL ATR Mult',         type: 'float', default: 1.5,  min: 0.5, max: 5.0, step: 0.1 },
     { key: 'tp_atr_mult',     label: 'TP ATR Mult',         type: 'float', default: 3.0,  min: 0.5, max: 10.0, step: 0.1 },
+    { key: 'be_trigger_pct',  label: 'BE Trigger (0=off)',  type: 'float', default: 0.0,  min: 0.0, max: 0.99, step: 0.05 },
   ],
 };
 

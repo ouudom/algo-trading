@@ -38,6 +38,7 @@ STRATEGIES: list[dict] = [
             {"key": "tp_atr_mult",      "label": "TP × ATR",          "type": "float", "default": 3.0,  "min": 0.5, "max": 20.0, "step": 0.1},
             {"key": "use_sma200_filter","label": "SMA(200) Filter",    "type": "bool",  "default": True},
             {"key": "sma200_period",    "label": "SMA Period",         "type": "int",   "default": 200,  "min": 10,  "max": 500},
+            {"key": "be_trigger_pct",   "label": "BE Trigger (0=off)", "type": "float", "default": 0.0,  "min": 0.0, "max": 0.99, "step": 0.05},
         ],
     },
     {
@@ -54,6 +55,7 @@ STRATEGIES: list[dict] = [
             {"key": "atr_period",       "label": "ATR Period",         "type": "int",   "default": 14,   "min": 1,   "max": 100},
             {"key": "sl_atr_mult",      "label": "SL × ATR",          "type": "float", "default": 1.5,  "min": 0.5, "max": 10.0, "step": 0.1},
             {"key": "tp_atr_mult",      "label": "TP × ATR",          "type": "float", "default": 3.0,  "min": 0.5, "max": 20.0, "step": 0.1},
+            {"key": "be_trigger_pct",   "label": "BE Trigger (0=off)", "type": "float", "default": 0.0,  "min": 0.0, "max": 0.99, "step": 0.05},
         ],
     },
 ]
