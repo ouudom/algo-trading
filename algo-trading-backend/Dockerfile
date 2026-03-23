@@ -22,9 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The Python TA-Lib pip package is a wrapper around this C lib and requires
 # it to be installed system-wide before the Python wheel can be compiled.
 WORKDIR /tmp/ta-lib-build
-RUN apt-get update && apt-get install -y libta-lib-dev && \
-    pip install ta-lib --no-build-isolation
-    
+RUN wget -q https://github.com/TA-Lib/ta-lib/releases/download/v0.4.0/ta-lib-0.4.0-src.tar.gz \
+    && tar -xzf ta-lib-0.4.0-src.tar.gz \
+    && cd ta-lib-0.4.0 \
+    && ./configure --prefix=/usr/local \
+    && make -j"$(nproc)" \
+    && make install \
+    && ldconfig \
+    && cd /tmp && rm -rf ta-lib-build
+
 # Install Python dependencies into an isolated prefix so they can be
 # cleanly copied into the slim runtime stage without any build tools.
 WORKDIR /build
